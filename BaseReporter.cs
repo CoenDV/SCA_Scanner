@@ -50,6 +50,7 @@ public abstract class BaseReporter : IReporter
         WriteLine("  -l, --log <file>            Write detailed output to a log file");
         WriteLine("  --csv <file>                Write scan results as CSV (one row per check)");
         WriteLine("  -r, --report <file>         Write scan results in SCAP-SCC log format");
+        WriteLine("  --sbom-file <file>          Write Trivy CycloneDX SBOM to file");
         WriteLine();
         WriteLine("SFTP UPLOAD OPTIONS:", ConsoleColor.White);
         WriteLine("  --sftp <host[:port]>        Upload generated files to SFTP server");
@@ -68,12 +69,14 @@ public abstract class BaseReporter : IReporter
         WriteLine("NOTES:", ConsoleColor.White);
         WriteLine("  - Config file is optional. By default, app looks for 'config.yml' in working dir");
         WriteLine("  - CLI arguments always override config file values");
+        WriteLine("  - SBOM generation runs on every scan using Trivy from 'SCA_SCANNER/bin'");
         WriteLine();
         WriteLine("EXAMPLES:", ConsoleColor.White);
         WriteLine("  SCAScanner Policies/sample_policy.yaml");
         WriteLine("  SCAScanner --display-details Policies/sample_policy.yaml");
         WriteLine("  SCAScanner --write-config");
         WriteLine("  SCAScanner --config custom.yml --no-details --csv report.csv Policies/");
+        WriteLine("  SCAScanner --sbom-file host-sbom.cdx.json Policies/sample_policy.yaml");
         WriteLine();
     }
 

@@ -193,6 +193,7 @@ OutputLevel outputLevel = OutputLevel.Standard;
 string? logFile     = null;
 string? csvFile     = null;
 string? scapSccFile = null;
+string? sbomFile    = null;
 string? target      = null;
 
 // SFTP configuration
@@ -257,6 +258,8 @@ try
         csvFile = loadedConfig.CsvFile;
     if (loadedConfig.ReportFile is not null)
         scapSccFile = loadedConfig.ReportFile;
+    if (loadedConfig.SbomFile is not null)
+        sbomFile = loadedConfig.SbomFile;
     if (loadedConfig.SftpHost is not null)
         sftpHost = loadedConfig.SftpHost;
     if (loadedConfig.SftpPort.HasValue)
@@ -317,6 +320,15 @@ for (int i = 0; i < args.Length; i++)
             else
             {
                 Console.Error.WriteLine("Error: -r/--report requires a file path argument.");
+                return 1;
+            }
+            break;
+        case "--sbom-file":
+            if (i + 1 < args.Length)
+                sbomFile = args[++i];
+            else
+            {
+                Console.Error.WriteLine("Error: --sbom-file requires a file path argument.");
                 return 1;
             }
             break;
@@ -414,12 +426,31 @@ IDeserializer deserializer = new DeserializerBuilder()
     .IgnoreUnmatchedProperties()
     .Build();
 
+int exitCode = 0;
+string? generatedSbomPath = null;
+
 try
 {
     if (Directory.Exists(target))
-        return ScanDirectory(target, reporter, deserializer);
+        exitCode = ScanDirectory(target, reporter, deserializer);
+    else
+        exitCode = ScanCommand(target, reporter, deserializer);
 
-    return ScanCommand(target, reporter, deserializer);
+    var sbomGenerator = new TrivySbomGenerator();
+    string plannedSbomPath = string.IsNullOrWhiteSpace(sbomFile)
+        ? sbomGenerator.ResolveDefaultOutputPath()
+        : sbomFile;
+
+    consoleReporter.PrintInfo($"Generating SBOM with Trivy (target: {(OperatingSystem.IsWindows() ? "system drive root" : "/")})...");
+    consoleReporter.PrintInfo($"SBOM output file: {Path.GetFullPath(plannedSbomPath)}");
+
+    generatedSbomPath = sbomGenerator.GenerateSbom(plannedSbomPath);
+    consoleReporter.PrintInfo($"SBOM generation completed: {generatedSbomPath}");
+}
+catch (Exception ex)
+{
+    consoleReporter.PrintError($"SBOM generation failed: {ex.Message}");
+    exitCode = 1;
 }
 finally
 {
@@ -442,6 +473,7 @@ finally
         if (logFile is not null && File.Exists(logFile)) filesToUpload.Add(logFile);
         if (csvFile is not null && File.Exists(csvFile)) filesToUpload.Add(csvFile);
         if (scapSccFile is not null && File.Exists(scapSccFile)) filesToUpload.Add(scapSccFile);
+        if (generatedSbomPath is not null && File.Exists(generatedSbomPath)) filesToUpload.Add(generatedSbomPath);
 
         if (filesToUpload.Any())
         {
@@ -453,8 +485,10 @@ finally
             catch (Exception ex)
             {
                 consoleReporter.PrintError($"SFTP upload failed: {ex.Message}");
-                Environment.Exit(1);
+                exitCode = 1;
             }
         }
     }
 }
+
+return exitCode;

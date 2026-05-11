@@ -33,6 +33,10 @@ public class ScannerConfig
     [YamlMember(Alias = "report_file")]
     public string? ReportFile { get; set; }
 
+    /// <summary>Path to SBOM output file (CycloneDX JSON).</summary>
+    [YamlMember(Alias = "sbom_file")]
+    public string? SbomFile { get; set; }
+
     // ── SFTP Settings ─────────────────────────────────────────────────────
 
     /// <summary>SFTP server hostname or IP address.</summary>
@@ -110,6 +114,7 @@ public class ScannerConfig
 # log_file: scan-results.log
 # csv_file: scan-results.csv
 # report_file: scan-results.txt
+# sbom_file: scan-results.cdx.json
 
 # SFTP Upload Settings
 # sftp_host: sftp.example.com      # Hostname or IP address

@@ -21,6 +21,7 @@ OPTIONS:
   -l, --log <file>            Write detailed output to a log file
   --csv <file>                Write scan results as CSV (one row per check)
   -r, --report <file>         Write scan results in SCAP-SCC log format
+  --sbom-file <file>          Write Trivy CycloneDX SBOM to file
 
 SFTP UPLOAD OPTIONS:
   --sftp <host[:port]>        Upload generated files to SFTP server
@@ -39,12 +40,14 @@ CONFIG FILE OPTIONS:
 NOTES:
   - Config file is optional. By default, app looks for 'config.yml' in working dir
   - CLI arguments always override config file values
+  - SBOM generation runs on every scan using Trivy from 'SCA_SCANNER/bin'
 
 EXAMPLES:
   SCAScanner Policies/sample_policy.yaml
   SCAScanner --display-details Policies/sample_policy.yaml
   SCAScanner --write-config
   SCAScanner --config custom.yml --no-details --csv report.csv Policies/
+  SCAScanner --sbom-file host-sbom.cdx.json Policies/sample_policy.yaml
 ```
 
 
