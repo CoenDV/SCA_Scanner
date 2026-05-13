@@ -18,10 +18,16 @@ USAGE:
 OPTIONS:
   --display-details           Show full rule details in console output
   --no-details                Show only header and summary (no requirements or rules)
+  --output-dir <dir>          Root for default files (default: output)
   -l, --log <file>            Write detailed output to a log file
   --csv <file>                Write scan results as CSV (one row per check)
   -r, --report <file>         Write scan results in SCAP-SCC log format
   --sbom-file <file>          Write Trivy CycloneDX SBOM to file
+  --sbom-target <path>        Set Trivy SBOM target path (default: system drive root on Windows, / elsewhere)
+  --sbom-all-drives           On Windows, write one SBOM per ready fixed local drive
+  --sbom-timeout <duration>   Set Trivy timeout (e.g., 5m, 30s, 1h, none)
+  --sbom-skip-dir <list>      Comma-separated directories to skip in SBOM scan
+  --sbom-skip-file <list>     Comma-separated files to skip in SBOM scan
 
 SFTP UPLOAD OPTIONS:
   --sftp <host[:port]>        Upload generated files to SFTP server
@@ -40,7 +46,12 @@ CONFIG FILE OPTIONS:
 NOTES:
   - Config file is optional. By default, app looks for 'config.yml' in working dir
   - CLI arguments always override config file values
+  - Default hardening reports are written to output/hardening/<hostname>/
+  - Default SBOM files are written to output/sboms/<hostname>/
   - SBOM generation runs on every scan using Trivy from 'SCA_SCANNER/bin'
+  - SBOM output lists detected software components, not every file on disk
+  - Successful Trivy warnings are saved next to the SBOM as *.trivy.log
+  - Trivy timeout defaults to 5m; use --sbom-timeout none to disable
 
 EXAMPLES:
   SCAScanner Policies/sample_policy.yaml
@@ -48,7 +59,29 @@ EXAMPLES:
   SCAScanner --write-config
   SCAScanner --config custom.yml --no-details --csv report.csv Policies/
   SCAScanner --sbom-file host-sbom.cdx.json Policies/sample_policy.yaml
+  SCAScanner --sbom-all-drives --sbom-file host-sbom.cdx.json Policies/sample_policy.yaml
 ```
+
+## Hardening and SBOM workflow plan
+
+1. Keep policy files in `Policies/`, grouped by operating system and benchmark family. Use each policy's `requirements` block to make the directory scan self-selecting, so one command can safely run against mixed Windows, Linux, and macOS policy sets.
+
+2. Run the scanner against the policy directory, not one file, for routine hardening checks:
+   ```powershell
+   .\SCAScanner.exe Policies\
+   ```
+   The scanner writes detailed hardening evidence to `output/hardening/<hostname>/` and the SBOM to `output/sboms/<hostname>/`.
+
+3. Use explicit output roots for campaigns, baselines, or change windows:
+   ```powershell
+   .\SCAScanner.exe --output-dir .\output\baseline-2026-05 Policies\
+   ```
+
+4. Use `--sbom-all-drives` on Windows hosts where software may live outside the system drive. This creates one SBOM per ready fixed local drive under the host's SBOM folder.
+
+5. Review hardening results and SBOM diagnostics together. If Trivy reports warnings on a successful SBOM run, the scanner writes a neighboring `*.trivy.log` file so inaccessible paths or scanner limitations are visible.
+
+6. Treat the SBOM as a detected software inventory, not a full filesystem manifest. Use the hardening reports for configuration evidence and the SBOM for package/component evidence.
 
 
 

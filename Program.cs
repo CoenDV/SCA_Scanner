@@ -4,6 +4,8 @@
 //          ./SCAScanner -h | --help
 // =============================================================================
 
+using System.Globalization;
+using System.Threading;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 using SCAScanner;
@@ -18,7 +20,65 @@ static SCAPolicy LoadPolicy(string path, IDeserializer deserializer)
 
 static string GetPlatform() =>
     OperatingSystem.IsWindows() ? "Windows" :
-    OperatingSystem.IsMacOS()   ? "macOS"   : "Linux";
+    OperatingSystem.IsMacOS() ? "macOS" : "Linux";
+
+static IEnumerable<string> SplitList(string value) =>
+    value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+static bool TryParseDuration(string value, out TimeSpan duration)
+{
+    duration = TimeSpan.Zero;
+    if (string.IsNullOrWhiteSpace(value)) return false;
+
+    string trimmed = value.Trim().ToLowerInvariant();
+    if (trimmed is "none" or "off" or "0")
+    {
+        duration = Timeout.InfiniteTimeSpan;
+        return true;
+    }
+
+    char suffix = trimmed[^1];
+    string numberPart = char.IsLetter(suffix) ? trimmed[..^1] : trimmed;
+
+    if (!double.TryParse(numberPart, NumberStyles.Float, CultureInfo.InvariantCulture, out double amount) || amount < 0)
+        return false;
+
+    duration = char.IsLetter(suffix)
+        ? suffix switch
+        {
+            's' => TimeSpan.FromSeconds(amount),
+            'm' => TimeSpan.FromMinutes(amount),
+            'h' => TimeSpan.FromHours(amount),
+            'd' => TimeSpan.FromDays(amount),
+            _ => TimeSpan.Zero
+        }
+        : TimeSpan.FromSeconds(amount);
+
+    return duration != TimeSpan.Zero;
+}
+
+static string GetSafeHostName()
+{
+    string hostName = Environment.MachineName;
+    char[] invalidChars = Path.GetInvalidFileNameChars();
+    string safe = new(hostName
+        .Select(c => invalidChars.Contains(c) ? '_' : c)
+        .ToArray());
+
+    return string.IsNullOrWhiteSpace(safe) ? "unknown-host" : safe;
+}
+
+static string BuildArtifactPath(string outputRoot, string category, string hostName, string fileName)
+{
+    return Path.Combine(outputRoot, category, hostName, fileName);
+}
+
+static void EnsureParentDirectory(string filePath)
+{
+    string? directory = Path.GetDirectoryName(Path.GetFullPath(filePath));
+    if (!string.IsNullOrWhiteSpace(directory))
+        Directory.CreateDirectory(directory);
+}
 
 // ── Requirements check (silent) ──────────────────────────────────────────────
 
@@ -27,10 +87,10 @@ static bool RequirementsMet(SCAPolicy policy)
     if (policy.Requirements is null) return true;
     Check reqCheck = new()
     {
-        Id        = 0,
-        Title     = policy.Requirements.Title,
+        Id = 0,
+        Title = policy.Requirements.Title,
         Condition = policy.Requirements.Condition,
-        Rules     = policy.Requirements.Rules
+        Rules = policy.Requirements.Rules
     };
     return RuleChecker.EvaluateCheck(reqCheck, policy.Variables).Status == CheckStatus.Passed;
 }
@@ -129,11 +189,11 @@ static int ScanCommand(string policyPath, IReporter reporter, IDeserializer dese
     {
         Check reqCheck = new()
         {
-            Id          = 0,
-            Title       = policy.Requirements.Title,
+            Id = 0,
+            Title = policy.Requirements.Title,
             Description = policy.Requirements.Description,
-            Condition   = policy.Requirements.Condition,
-            Rules       = policy.Requirements.Rules
+            Condition = policy.Requirements.Condition,
+            Rules = policy.Requirements.Rules
         };
 
         CheckResult reqResult = RuleChecker.EvaluateCheck(reqCheck, policy.Variables);
@@ -190,11 +250,18 @@ static int ScanCommand(string policyPath, IReporter reporter, IDeserializer dese
 // ── Main Entry Point ─────────────────────────────────────────────────────────
 
 OutputLevel outputLevel = OutputLevel.Standard;
-string? logFile     = null;
-string? csvFile     = null;
+string? logFile = null;
+string? csvFile = null;
 string? scapSccFile = null;
-string? sbomFile    = null;
-string? target      = null;
+string? sbomFile = null;
+string? sbomTarget = null;
+bool sbomAllDrives = false;
+string outputRoot = "output";
+string sbomTimeoutText = "5m";
+TimeSpan sbomTimeout = TimeSpan.FromMinutes(5);
+List<string> sbomSkipDirs = new();
+List<string> sbomSkipFiles = new();
+string? target = null;
 
 // SFTP configuration
 string? sftpHost = null;
@@ -252,6 +319,8 @@ try
 {
     if (loadedConfig.OutputLevel.HasValue)
         outputLevel = loadedConfig.OutputLevel.Value;
+    if (loadedConfig.OutputDir is not null)
+        outputRoot = loadedConfig.OutputDir;
     if (loadedConfig.LogFile is not null)
         logFile = loadedConfig.LogFile;
     if (loadedConfig.CsvFile is not null)
@@ -260,6 +329,21 @@ try
         scapSccFile = loadedConfig.ReportFile;
     if (loadedConfig.SbomFile is not null)
         sbomFile = loadedConfig.SbomFile;
+    if (loadedConfig.SbomTarget is not null)
+        sbomTarget = loadedConfig.SbomTarget;
+    if (loadedConfig.SbomAllDrives.HasValue)
+        sbomAllDrives = loadedConfig.SbomAllDrives.Value;
+    if (loadedConfig.SbomTimeout is not null)
+    {
+        if (!TryParseDuration(loadedConfig.SbomTimeout, out TimeSpan parsedTimeout))
+            throw new ArgumentException($"Invalid sbom_timeout in config: '{loadedConfig.SbomTimeout}'. Use values like '5m', '30s', '1h', or 'none'.");
+        sbomTimeoutText = loadedConfig.SbomTimeout;
+        sbomTimeout = parsedTimeout;
+    }
+    if (loadedConfig.SbomSkipDirs is not null)
+        sbomSkipDirs.AddRange(loadedConfig.SbomSkipDirs);
+    if (loadedConfig.SbomSkipFiles is not null)
+        sbomSkipFiles.AddRange(loadedConfig.SbomSkipFiles);
     if (loadedConfig.SftpHost is not null)
         sftpHost = loadedConfig.SftpHost;
     if (loadedConfig.SftpPort.HasValue)
@@ -293,6 +377,15 @@ for (int i = 0; i < args.Length; i++)
             break;
         case "--no-details":
             outputLevel = OutputLevel.Compact;
+            break;
+        case "--output-dir":
+            if (i + 1 < args.Length)
+                outputRoot = args[++i];
+            else
+            {
+                Console.Error.WriteLine("Error: --output-dir requires a directory path argument.");
+                return 1;
+            }
             break;
         case "-l":
         case "--log":
@@ -329,6 +422,54 @@ for (int i = 0; i < args.Length; i++)
             else
             {
                 Console.Error.WriteLine("Error: --sbom-file requires a file path argument.");
+                return 1;
+            }
+            break;
+        case "--sbom-target":
+            if (i + 1 < args.Length)
+                sbomTarget = args[++i];
+            else
+            {
+                Console.Error.WriteLine("Error: --sbom-target requires a path argument.");
+                return 1;
+            }
+            break;
+        case "--sbom-all-drives":
+            sbomAllDrives = true;
+            break;
+        case "--sbom-timeout":
+            if (i + 1 < args.Length)
+            {
+                string rawTimeout = args[++i];
+                if (!TryParseDuration(rawTimeout, out TimeSpan parsedTimeout))
+                {
+                    Console.Error.WriteLine("Error: --sbom-timeout must be like '5m', '30s', '1h', or 'none'.");
+                    return 1;
+                }
+                sbomTimeoutText = rawTimeout;
+                sbomTimeout = parsedTimeout;
+            }
+            else
+            {
+                Console.Error.WriteLine("Error: --sbom-timeout requires a value like '5m' or 'none'.");
+                return 1;
+            }
+            break;
+        case "--sbom-skip-dir":
+            if (i + 1 < args.Length)
+                sbomSkipDirs.AddRange(SplitList(args[++i]));
+            else
+            {
+                Console.Error.WriteLine("Error: --sbom-skip-dir requires a comma-separated list.");
+                return 1;
+            }
+            break;
+        case "--sbom-skip-file":
+            if (i + 1 < args.Length)
+                sbomSkipFiles.AddRange(SplitList(args[++i]));
+            else
+            {
+                Console.Error.WriteLine("Error: --sbom-skip-file requires a comma-separated list.");
                 return 1;
             }
             break;
@@ -411,12 +552,24 @@ if (target is null)
     return 0;
 }
 
+string hostName = GetSafeHostName();
+string runTimestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+logFile ??= BuildArtifactPath(outputRoot, "hardening", hostName, $"hardening-{runTimestamp}.log");
+csvFile ??= BuildArtifactPath(outputRoot, "hardening", hostName, $"hardening-{runTimestamp}.csv");
+scapSccFile ??= BuildArtifactPath(outputRoot, "hardening", hostName, $"hardening-{runTimestamp}.txt");
+sbomFile ??= BuildArtifactPath(outputRoot, "sboms", hostName, $"sbom-{runTimestamp}.cdx.json");
+
+EnsureParentDirectory(logFile);
+EnsureParentDirectory(csvFile);
+EnsureParentDirectory(scapSccFile);
+EnsureParentDirectory(sbomFile);
+
 ConsoleReporter consoleReporter = new(outputLevel);
 // Use object list so non-IReporter sub-reporters (e.g. CsvReporter) can be included
 List<object> reporters = [consoleReporter];
-if (logFile is not null) reporters.Add(new FileReporter(logFile));
-if (csvFile     is not null) reporters.Add(new CsvReporter(csvFile));
-if (scapSccFile is not null) reporters.Add(new AdvancedReporter(scapSccFile));
+reporters.Add(new FileReporter(logFile));
+reporters.Add(new CsvReporter(csvFile));
+reporters.Add(new AdvancedReporter(scapSccFile));
 IReporter reporter = reporters.Count > 1
     ? new CompositeReporter([.. reporters])
     : consoleReporter;
@@ -427,7 +580,7 @@ IDeserializer deserializer = new DeserializerBuilder()
     .Build();
 
 int exitCode = 0;
-string? generatedSbomPath = null;
+List<TrivySbomGenerator.TrivySbomResult> generatedSboms = new();
 
 try
 {
@@ -441,11 +594,40 @@ try
         ? sbomGenerator.ResolveDefaultOutputPath()
         : sbomFile;
 
-    consoleReporter.PrintInfo($"Generating SBOM with Trivy (target: {(OperatingSystem.IsWindows() ? "system drive root" : "/")})...");
-    consoleReporter.PrintInfo($"SBOM output file: {Path.GetFullPath(plannedSbomPath)}");
+    if (!string.IsNullOrWhiteSpace(sbomTarget) && sbomAllDrives)
+        throw new InvalidOperationException("--sbom-target and --sbom-all-drives cannot be used together.");
 
-    generatedSbomPath = sbomGenerator.GenerateSbom(plannedSbomPath);
-    consoleReporter.PrintInfo($"SBOM generation completed: {generatedSbomPath}");
+    IReadOnlyList<string> sbomTargets = TrivySbomGenerator.ResolveTargetPaths(sbomTarget, sbomAllDrives);
+    string displayTarget = sbomTargets.Count == 1
+        ? sbomTargets[0]
+        : string.Join(", ", sbomTargets);
+    string timeoutLabel = sbomTimeout == Timeout.InfiniteTimeSpan ? "none" : sbomTimeoutText;
+
+    consoleReporter.PrintInfo($"Generating SBOM with Trivy (target: {displayTarget}, timeout: {timeoutLabel})...");
+    if (!sbomAllDrives && string.IsNullOrWhiteSpace(sbomTarget) && OperatingSystem.IsWindows())
+        consoleReporter.PrintWarning("Default SBOM target is the Windows system drive only. Use --sbom-all-drives to scan every ready fixed local drive.");
+
+    for (int i = 0; i < sbomTargets.Count; i++)
+    {
+        string targetPath = sbomTargets[i];
+        string targetOutputPath = TrivySbomGenerator.ResolveOutputPathForTarget(plannedSbomPath, targetPath, sbomTargets.Count);
+
+        consoleReporter.PrintInfo($"SBOM output file: {Path.GetFullPath(targetOutputPath)}");
+
+        TrivySbomGenerator.TrivySbomResult result = sbomGenerator.GenerateSbom(targetOutputPath, new TrivySbomGenerator.TrivySbomOptions
+        {
+            TargetPath = targetPath,
+            Timeout = sbomTimeout,
+            TrivyTimeoutArgument = sbomTimeout == Timeout.InfiniteTimeSpan ? null : sbomTimeoutText,
+            SkipDirs = sbomSkipDirs,
+            SkipFiles = sbomSkipFiles
+        });
+
+        generatedSboms.Add(result);
+        consoleReporter.PrintInfo($"SBOM generation completed: {result.OutputPath}");
+        if (result.DiagnosticLogPath is not null)
+            consoleReporter.PrintWarning($"Trivy wrote diagnostics for {result.TargetPath}. Review: {result.DiagnosticLogPath}");
+    }
 }
 catch (Exception ex)
 {
@@ -473,7 +655,11 @@ finally
         if (logFile is not null && File.Exists(logFile)) filesToUpload.Add(logFile);
         if (csvFile is not null && File.Exists(csvFile)) filesToUpload.Add(csvFile);
         if (scapSccFile is not null && File.Exists(scapSccFile)) filesToUpload.Add(scapSccFile);
-        if (generatedSbomPath is not null && File.Exists(generatedSbomPath)) filesToUpload.Add(generatedSbomPath);
+        foreach (TrivySbomGenerator.TrivySbomResult sbom in generatedSboms)
+        {
+            if (File.Exists(sbom.OutputPath)) filesToUpload.Add(sbom.OutputPath);
+            if (sbom.DiagnosticLogPath is not null && File.Exists(sbom.DiagnosticLogPath)) filesToUpload.Add(sbom.DiagnosticLogPath);
+        }
 
         if (filesToUpload.Any())
         {

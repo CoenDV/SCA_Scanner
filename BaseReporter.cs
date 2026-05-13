@@ -16,11 +16,11 @@ public abstract class BaseReporter : IReporter
     protected abstract void Write(string text, ConsoleColor? color = null);
     protected abstract void WriteLine(string text = "", ConsoleColor? color = null);
 
-    protected void WritePass(string text)    => Write(text, ConsoleColor.Green);
-    protected void WriteFail(string text)    => Write(text, ConsoleColor.Red);
+    protected void WritePass(string text) => Write(text, ConsoleColor.Green);
+    protected void WriteFail(string text) => Write(text, ConsoleColor.Red);
     protected void WriteInvalid(string text) => Write(text, ConsoleColor.DarkYellow);
-    protected void WriteLabel(string text)   => Write(text, ConsoleColor.DarkCyan);
-    protected void WriteGray(string text)    => Write(text, ConsoleColor.DarkGray);
+    protected void WriteLabel(string text) => Write(text, ConsoleColor.DarkCyan);
+    protected void WriteGray(string text) => Write(text, ConsoleColor.DarkGray);
 
     protected static string Truncate(string text, int maxLength) => StringUtils.Truncate(text, maxLength);
 
@@ -47,10 +47,16 @@ public abstract class BaseReporter : IReporter
         WriteLine("OPTIONS:", ConsoleColor.White);
         WriteLine("  --display-details           Show full rule details in console output");
         WriteLine("  --no-details                Show only header and summary (no requirements or rules)");
+        WriteLine("  --output-dir <dir>          Root for default files (default: output)");
         WriteLine("  -l, --log <file>            Write detailed output to a log file");
         WriteLine("  --csv <file>                Write scan results as CSV (one row per check)");
         WriteLine("  -r, --report <file>         Write scan results in SCAP-SCC log format");
         WriteLine("  --sbom-file <file>          Write Trivy CycloneDX SBOM to file");
+        WriteLine("  --sbom-target <path>        Set Trivy SBOM target path (default: system drive root on Windows, / elsewhere)");
+        WriteLine("  --sbom-all-drives           On Windows, write one SBOM per ready fixed local drive");
+        WriteLine("  --sbom-timeout <duration>   Set Trivy timeout (e.g., 5m, 30s, 1h, none)");
+        WriteLine("  --sbom-skip-dir <list>      Comma-separated directories to skip in SBOM scan");
+        WriteLine("  --sbom-skip-file <list>     Comma-separated files to skip in SBOM scan");
         WriteLine();
         WriteLine("SFTP UPLOAD OPTIONS:", ConsoleColor.White);
         WriteLine("  --sftp <host[:port]>        Upload generated files to SFTP server");
@@ -69,7 +75,12 @@ public abstract class BaseReporter : IReporter
         WriteLine("NOTES:", ConsoleColor.White);
         WriteLine("  - Config file is optional. By default, app looks for 'config.yml' in working dir");
         WriteLine("  - CLI arguments always override config file values");
+        WriteLine("  - Default hardening reports are written to output/hardening/<hostname>/");
+        WriteLine("  - Default SBOM files are written to output/sboms/<hostname>/");
         WriteLine("  - SBOM generation runs on every scan using Trivy from 'SCA_SCANNER/bin'");
+        WriteLine("  - SBOM output lists detected software components, not every file on disk");
+        WriteLine("  - Successful Trivy warnings are saved next to the SBOM as *.trivy.log");
+        WriteLine("  - Trivy timeout defaults to 5m; use --sbom-timeout none to disable");
         WriteLine();
         WriteLine("EXAMPLES:", ConsoleColor.White);
         WriteLine("  SCAScanner Policies/sample_policy.yaml");
@@ -77,6 +88,7 @@ public abstract class BaseReporter : IReporter
         WriteLine("  SCAScanner --write-config");
         WriteLine("  SCAScanner --config custom.yml --no-details --csv report.csv Policies/");
         WriteLine("  SCAScanner --sbom-file host-sbom.cdx.json Policies/sample_policy.yaml");
+        WriteLine("  SCAScanner --sbom-all-drives --sbom-file host-sbom.cdx.json Policies/sample_policy.yaml");
         WriteLine();
     }
 
@@ -250,7 +262,7 @@ public abstract class BaseReporter : IReporter
 
         ConsoleColor scoreColor = score >= 75 ? ConsoleColor.Green
                                 : score >= 50 ? ConsoleColor.Yellow
-                                :               ConsoleColor.Red;
+                                : ConsoleColor.Red;
         WriteLine($"{score}%", scoreColor);
         WriteLine();
 

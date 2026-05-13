@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -19,6 +20,10 @@ public class ScannerConfig
     [YamlIgnore]
     public SCAScanner.OutputLevel? OutputLevel => ParseOutputLevel(OutputLevelString);
 
+    /// <summary>Root directory for default scanner artifacts.</summary>
+    [YamlMember(Alias = "output_dir")]
+    public string? OutputDir { get; set; }
+
     // ── Report File Outputs ───────────────────────────────────────────────
 
     /// <summary>Path to log file for detailed output.</summary>
@@ -36,6 +41,26 @@ public class ScannerConfig
     /// <summary>Path to SBOM output file (CycloneDX JSON).</summary>
     [YamlMember(Alias = "sbom_file")]
     public string? SbomFile { get; set; }
+
+    /// <summary>Target path for Trivy SBOM generation.</summary>
+    [YamlMember(Alias = "sbom_target")]
+    public string? SbomTarget { get; set; }
+
+    /// <summary>Generate one SBOM per ready fixed local drive on Windows.</summary>
+    [YamlMember(Alias = "sbom_all_drives")]
+    public bool? SbomAllDrives { get; set; }
+
+    /// <summary>Trivy timeout (e.g. "5m", "30s", "1h").</summary>
+    [YamlMember(Alias = "sbom_timeout")]
+    public string? SbomTimeout { get; set; }
+
+    /// <summary>Directories to skip during SBOM generation.</summary>
+    [YamlMember(Alias = "sbom_skip_dirs")]
+    public List<string>? SbomSkipDirs { get; set; }
+
+    /// <summary>Files to skip during SBOM generation.</summary>
+    [YamlMember(Alias = "sbom_skip_files")]
+    public List<string>? SbomSkipFiles { get; set; }
 
     // ── SFTP Settings ─────────────────────────────────────────────────────
 
@@ -108,13 +133,22 @@ public class ScannerConfig
 # Display Settings
 # output_level can be: standard | detailed | compact
 # output_level: standard
+# output_dir: output
 
 # Report File Outputs
-# Paths can be relative or absolute
+# Paths can be relative or absolute. If omitted, reports are written to output/hardening/<hostname>/.
 # log_file: scan-results.log
 # csv_file: scan-results.csv
 # report_file: scan-results.txt
-# sbom_file: scan-results.cdx.json
+# sbom_file: scan-results.cdx.json       # If omitted, written to output/sboms/<hostname>/.
+# sbom_target: C:\
+# sbom_all_drives: false
+# sbom_timeout: 5m
+# sbom_skip_dirs:
+#   - C:\Windows\WinSxS
+#   - C:\Windows\SoftwareDistribution
+# sbom_skip_files:
+#   - C:\pagefile.sys
 
 # SFTP Upload Settings
 # sftp_host: sftp.example.com      # Hostname or IP address

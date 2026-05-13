@@ -367,3 +367,4 @@ FodyWeavers.xsd
 
 # Test files
 SCA_test/
+output/
