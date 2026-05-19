@@ -14,8 +14,32 @@ public sealed class TrivySbomGenerator
 
     public string ResolveDefaultOutputPath()
     {
-        string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
-        return Path.Combine(Directory.GetCurrentDirectory(), "output", "sboms", GetSafeHostName(), $"sbom-{timestamp}.cdx.json");
+        string hostName = GetSafeHostName();
+        string? reportsDir = Environment.GetEnvironmentVariable("REPORTS_DIR");
+        string outputRoot;
+
+        if (!string.IsNullOrWhiteSpace(reportsDir))
+        {
+            outputRoot = reportsDir;
+        }
+        else if (OperatingSystem.IsWindows())
+        {
+            string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+            if (string.IsNullOrWhiteSpace(programData))
+                programData = @"C:\ProgramData";
+
+            outputRoot = Path.Combine(programData, "platform-scanning");
+        }
+        else if (OperatingSystem.IsMacOS())
+        {
+            outputRoot = "/Library/Application Support/platform-scanning";
+        }
+        else
+        {
+            outputRoot = "/var/lib/platform-scanning";
+        }
+
+        return Path.Combine(outputRoot, $"sbom-trivy-{hostName}.json");
     }
 
     public sealed class TrivySbomOptions

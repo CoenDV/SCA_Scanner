@@ -133,14 +133,15 @@ public class ScannerConfig
 # Display Settings
 # output_level can be: standard | detailed | compact
 # output_level: standard
-# output_dir: output
+# output_dir: C:\ProgramData\platform-scanning
 
 # Report File Outputs
-# Paths can be relative or absolute. If omitted, reports are written to output/hardening/<hostname>/.
+# Paths can be relative or absolute. If omitted, reports are written to REPORTS_DIR
+# or the platform standard report directory.
 # log_file: scan-results.log
 # csv_file: scan-results.csv
 # report_file: scan-results.txt
-# sbom_file: scan-results.cdx.json       # If omitted, written to output/sboms/<hostname>/.
+# sbom_file: scan-results.json
 # sbom_target: C:\
 # sbom_all_drives: false
 # sbom_timeout: 5m

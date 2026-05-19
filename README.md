@@ -18,7 +18,7 @@ USAGE:
 OPTIONS:
   --display-details           Show full rule details in console output
   --no-details                Show only header and summary (no requirements or rules)
-  --output-dir <dir>          Root for default files (default: output)
+  --output-dir <dir>          Root for default files (default: REPORTS_DIR or platform standard)
   -l, --log <file>            Write detailed output to a log file
   --csv <file>                Write scan results as CSV (one row per check)
   -r, --report <file>         Write scan results in SCAP-SCC log format
@@ -46,8 +46,10 @@ CONFIG FILE OPTIONS:
 NOTES:
   - Config file is optional. By default, app looks for 'config.yml' in working dir
   - CLI arguments always override config file values
-  - Default hardening reports are written to output/hardening/<hostname>/
-  - Default SBOM files are written to output/sboms/<hostname>/
+  - Default reports are written to REPORTS_DIR when set
+  - Otherwise reports use /var/lib/platform-scanning on Linux
+  - On macOS the standard report directory is /Library/Application Support/platform-scanning
+  - On Windows the standard report directory is C:\ProgramData\platform-scanning
   - SBOM generation runs on every scan using Trivy from 'SCA_SCANNER/bin'
   - SBOM output lists detected software components, not every file on disk
   - Successful Trivy warnings are saved next to the SBOM as *.trivy.log
@@ -70,7 +72,7 @@ EXAMPLES:
    ```powershell
    .\SCAScanner.exe Policies\
    ```
-   The scanner writes detailed hardening evidence to `output/hardening/<hostname>/` and the SBOM to `output/sboms/<hostname>/`.
+   The scanner writes hardening evidence and the SBOM to the standard report directory. Set `REPORTS_DIR` or pass `--output-dir` to override it.
 
 3. Use explicit output roots for campaigns, baselines, or change windows:
    ```powershell

@@ -68,16 +68,69 @@ static string GetSafeHostName()
     return string.IsNullOrWhiteSpace(safe) ? "unknown-host" : safe;
 }
 
-static string BuildArtifactPath(string outputRoot, string category, string hostName, string fileName)
+static string GetDefaultOutputRoot()
 {
-    return Path.Combine(outputRoot, category, hostName, fileName);
+    string? reportsDir = Environment.GetEnvironmentVariable("REPORTS_DIR");
+    if (!string.IsNullOrWhiteSpace(reportsDir))
+        return reportsDir;
+
+    if (OperatingSystem.IsWindows())
+    {
+        string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+        if (string.IsNullOrWhiteSpace(programData))
+            programData = @"C:\ProgramData";
+
+        return Path.Combine(programData, "platform-scanning");
+    }
+
+    if (OperatingSystem.IsMacOS())
+        return "/Library/Application Support/platform-scanning";
+
+    return "/var/lib/platform-scanning";
+}
+
+static string BuildArtifactPath(string outputRoot, string fileName)
+{
+    return Path.Combine(outputRoot, fileName);
+}
+
+static void TrySetUnixMode(string path, UnixFileMode mode)
+{
+    if (OperatingSystem.IsWindows())
+        return;
+
+    try
+    {
+        File.SetUnixFileMode(path, mode);
+    }
+    catch
+    {
+        // Best effort: permissions may be controlled by mount options or filesystem support.
+    }
+}
+
+static void EnsureOutputDirectory(string outputRoot)
+{
+    Directory.CreateDirectory(outputRoot);
+    TrySetUnixMode(outputRoot, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                               UnixFileMode.GroupRead | UnixFileMode.GroupExecute);
 }
 
 static void EnsureParentDirectory(string filePath)
 {
     string? directory = Path.GetDirectoryName(Path.GetFullPath(filePath));
     if (!string.IsNullOrWhiteSpace(directory))
-        Directory.CreateDirectory(directory);
+        EnsureOutputDirectory(directory);
+}
+
+static void TightenReportPermissions(params string?[] filePaths)
+{
+    foreach (string? filePath in filePaths)
+    {
+        if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))
+            TrySetUnixMode(filePath, UnixFileMode.UserRead | UnixFileMode.UserWrite |
+                                     UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+    }
 }
 
 // ── Requirements check (silent) ──────────────────────────────────────────────
@@ -256,7 +309,7 @@ string? scapSccFile = null;
 string? sbomFile = null;
 string? sbomTarget = null;
 bool sbomAllDrives = false;
-string outputRoot = "output";
+string outputRoot = GetDefaultOutputRoot();
 string sbomTimeoutText = "5m";
 TimeSpan sbomTimeout = TimeSpan.FromMinutes(5);
 List<string> sbomSkipDirs = new();
@@ -553,12 +606,12 @@ if (target is null)
 }
 
 string hostName = GetSafeHostName();
-string runTimestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
-logFile ??= BuildArtifactPath(outputRoot, "hardening", hostName, $"hardening-{runTimestamp}.log");
-csvFile ??= BuildArtifactPath(outputRoot, "hardening", hostName, $"hardening-{runTimestamp}.csv");
-scapSccFile ??= BuildArtifactPath(outputRoot, "hardening", hostName, $"hardening-{runTimestamp}.txt");
-sbomFile ??= BuildArtifactPath(outputRoot, "sboms", hostName, $"sbom-{runTimestamp}.cdx.json");
+logFile ??= BuildArtifactPath(outputRoot, $"hardening-{hostName}.log");
+csvFile ??= BuildArtifactPath(outputRoot, $"hardening-{hostName}.csv");
+scapSccFile ??= BuildArtifactPath(outputRoot, $"hardening-{hostName}.txt");
+sbomFile ??= BuildArtifactPath(outputRoot, $"sbom-trivy-{hostName}.json");
 
+EnsureOutputDirectory(outputRoot);
 EnsureParentDirectory(logFile);
 EnsureParentDirectory(csvFile);
 EnsureParentDirectory(scapSccFile);
@@ -637,6 +690,15 @@ catch (Exception ex)
 finally
 {
     if (reporter is IDisposable d) d.Dispose();
+
+    List<string?> sbomOutputFiles = new();
+    foreach (TrivySbomGenerator.TrivySbomResult sbom in generatedSboms)
+    {
+        sbomOutputFiles.Add(sbom.OutputPath);
+        sbomOutputFiles.Add(sbom.DiagnosticLogPath);
+    }
+
+    TightenReportPermissions([logFile, csvFile, scapSccFile, .. sbomOutputFiles]);
 
     // Upload files to SFTP server if configured
     if (sftpHost is not null)

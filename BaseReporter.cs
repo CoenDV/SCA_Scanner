@@ -47,7 +47,7 @@ public abstract class BaseReporter : IReporter
         WriteLine("OPTIONS:", ConsoleColor.White);
         WriteLine("  --display-details           Show full rule details in console output");
         WriteLine("  --no-details                Show only header and summary (no requirements or rules)");
-        WriteLine("  --output-dir <dir>          Root for default files (default: output)");
+        WriteLine("  --output-dir <dir>          Root for default files (default: REPORTS_DIR or platform standard)");
         WriteLine("  -l, --log <file>            Write detailed output to a log file");
         WriteLine("  --csv <file>                Write scan results as CSV (one row per check)");
         WriteLine("  -r, --report <file>         Write scan results in SCAP-SCC log format");
@@ -75,8 +75,10 @@ public abstract class BaseReporter : IReporter
         WriteLine("NOTES:", ConsoleColor.White);
         WriteLine("  - Config file is optional. By default, app looks for 'config.yml' in working dir");
         WriteLine("  - CLI arguments always override config file values");
-        WriteLine("  - Default hardening reports are written to output/hardening/<hostname>/");
-        WriteLine("  - Default SBOM files are written to output/sboms/<hostname>/");
+        WriteLine("  - Default reports are written to REPORTS_DIR when set");
+        WriteLine("  - Otherwise reports use /var/lib/platform-scanning on Linux");
+        WriteLine("  - On macOS the standard report directory is /Library/Application Support/platform-scanning");
+        WriteLine("  - On Windows the standard report directory is C:\\ProgramData\\platform-scanning");
         WriteLine("  - SBOM generation runs on every scan using Trivy from 'SCA_SCANNER/bin'");
         WriteLine("  - SBOM output lists detected software components, not every file on disk");
         WriteLine("  - Successful Trivy warnings are saved next to the SBOM as *.trivy.log");
