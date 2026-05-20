@@ -367,3 +367,6 @@ FodyWeavers.xsd
 
 # Test files
 SCA_test/
+
+Policies/CIS/*
+!Policies/CIS/README.md
