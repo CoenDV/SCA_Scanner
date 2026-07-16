@@ -151,16 +151,19 @@ public sealed class TrivySbomGenerator
 
         process.WaitForExit();
 
+        // Written before either failure check below so a diagnostics record survives
+        // even when Trivy fails outright, instead of only ever being written on success.
+        string? diagnosticLogPath = WriteDiagnosticsLog(fullOutput, targetPath, stdOut.ToString(), stdErr.ToString());
+
         if (process.ExitCode != 0)
         {
             string detail = stdErr.Length == 0 ? stdOut.ToString() : stdErr.ToString();
-            throw new InvalidOperationException($"Trivy exited with code {process.ExitCode}: {detail.Trim()}");
+            string diagnosticsNote = diagnosticLogPath is not null ? $" Diagnostics: {diagnosticLogPath}" : string.Empty;
+            throw new InvalidOperationException($"Trivy exited with code {process.ExitCode}: {detail.Trim()}.{diagnosticsNote}");
         }
 
         if (!File.Exists(fullOutput))
             throw new InvalidOperationException($"Trivy completed but SBOM file was not created: {fullOutput}");
-
-        string? diagnosticLogPath = WriteDiagnosticsLog(fullOutput, targetPath, stdOut.ToString(), stdErr.ToString());
 
         return new Result(
             fullOutput,

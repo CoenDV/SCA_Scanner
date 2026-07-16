@@ -691,16 +691,16 @@ try
         : string.Join(", ", sbomTargets);
     string timeoutLabel = sbomTimeout == Timeout.InfiniteTimeSpan ? "none" : sbomTimeoutText;
 
-    consoleReporter.PrintInfo($"Generating SBOM with Trivy (target: {displayTarget}, timeout: {timeoutLabel})...");
+    reporter.PrintInfo($"Generating SBOM with Trivy (target: {displayTarget}, timeout: {timeoutLabel})...");
     if (!sbomAllDrives && string.IsNullOrWhiteSpace(sbomTarget) && OperatingSystem.IsWindows())
-        consoleReporter.PrintWarning("Default SBOM target is the Windows system drive only. Use --sbom-all-drives to scan every ready fixed local drive.");
+        reporter.PrintWarning("Default SBOM target is the Windows system drive only. Use --sbom-all-drives to scan every ready fixed local drive.");
 
     for (int i = 0; i < sbomTargets.Count; i++)
     {
         string targetPath = sbomTargets[i];
         string targetOutputPath = TrivySbomGenerator.ResolveOutputPathForTarget(plannedSbomPath, targetPath, sbomTargets.Count);
 
-        consoleReporter.PrintInfo($"SBOM output file: {Path.GetFullPath(targetOutputPath)}");
+        reporter.PrintInfo($"SBOM output file: {Path.GetFullPath(targetOutputPath)}");
 
         TrivySbomGenerator.Result result = sbomGenerator.GenerateSbom(targetOutputPath, new TrivySbomGenerator.Options
         {
@@ -712,14 +712,14 @@ try
         });
 
         generatedSboms.Add(result);
-        consoleReporter.PrintInfo($"SBOM generation completed: {result.OutputPath}");
+        reporter.PrintInfo($"SBOM generation completed: {result.OutputPath}");
         if (result.DiagnosticLogPath is not null)
-            consoleReporter.PrintWarning($"Trivy wrote diagnostics for {result.TargetPath}. Review: {result.DiagnosticLogPath}");
+            reporter.PrintWarning($"Trivy wrote diagnostics for {result.TargetPath}. Review: {result.DiagnosticLogPath}");
     }
 }
 catch (Exception ex)
 {
-    consoleReporter.PrintError($"SBOM generation failed: {ex.Message}");
+    reporter.PrintError($"SBOM generation failed: {ex.Message}");
 }
 finally
 {
