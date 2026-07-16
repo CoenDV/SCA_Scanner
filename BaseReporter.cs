@@ -22,8 +22,6 @@ public abstract class BaseReporter : IReporter
     protected void WriteLabel(string text) => Write(text, ConsoleColor.DarkCyan);
     protected void WriteGray(string text) => Write(text, ConsoleColor.DarkGray);
 
-    protected static string Truncate(string text, int maxLength) => StringUtils.Truncate(text, maxLength);
-
     // =========================================================================
     // UI Structure
     // =========================================================================

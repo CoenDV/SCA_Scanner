@@ -68,8 +68,6 @@ static string GetSafeHostName()
     return string.IsNullOrWhiteSpace(safe) ? "unknown-host" : safe;
 }
 
-static string GetDateStamp() => DateTimeOffset.Now.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
-
 static string GetDefaultOutputRoot()
 {
     string? reportsDir = Environment.GetEnvironmentVariable("REPORTS_DIR");
@@ -640,11 +638,10 @@ if (OperatingSystem.IsWindows())
 }
 
 string hostName = GetSafeHostName();
-string dateStamp = GetDateStamp();
-logFile ??= BuildArtifactPath(outputRoot, $"hardening-{hostName}-{dateStamp}.log");
-csvFile ??= BuildArtifactPath(outputRoot, $"hardening-{hostName}-{dateStamp}.csv");
-scapSccFile ??= BuildArtifactPath(outputRoot, $"hardening-{hostName}-{dateStamp}.txt");
-sbomFile ??= BuildArtifactPath(outputRoot, $"sbom-trivy-{hostName}-{dateStamp}.json");
+logFile ??= BuildArtifactPath(outputRoot, $"hardening-{hostName}.log");
+csvFile ??= BuildArtifactPath(outputRoot, $"hardening-{hostName}.csv");
+scapSccFile ??= BuildArtifactPath(outputRoot, $"hardening-{hostName}.txt");
+sbomFile ??= BuildArtifactPath(outputRoot, $"sbom-{hostName}.cdx.json");
 
 EnsureOutputDirectory(outputRoot);
 EnsureParentDirectory(logFile);
@@ -674,7 +671,7 @@ if (!string.IsNullOrWhiteSpace(sbomTarget) && sbomAllDrives)
 }
 
 int exitCode = 0;
-List<TrivySbomGenerator.TrivySbomResult> generatedSboms = new();
+List<TrivySbomGenerator.Result> generatedSboms = new();
 
 try
 {
@@ -705,7 +702,7 @@ try
 
         consoleReporter.PrintInfo($"SBOM output file: {Path.GetFullPath(targetOutputPath)}");
 
-        TrivySbomGenerator.TrivySbomResult result = sbomGenerator.GenerateSbom(targetOutputPath, new TrivySbomGenerator.TrivySbomOptions
+        TrivySbomGenerator.Result result = sbomGenerator.GenerateSbom(targetOutputPath, new TrivySbomGenerator.Options
         {
             TargetPath = targetPath,
             Timeout = sbomTimeout,
@@ -729,7 +726,7 @@ finally
     if (reporter is IDisposable d) d.Dispose();
 
     List<string?> sbomOutputFiles = new();
-    foreach (TrivySbomGenerator.TrivySbomResult sbom in generatedSboms)
+    foreach (TrivySbomGenerator.Result sbom in generatedSboms)
     {
         sbomOutputFiles.Add(sbom.OutputPath);
         sbomOutputFiles.Add(sbom.DiagnosticLogPath);
@@ -754,7 +751,7 @@ finally
         if (logFile is not null && File.Exists(logFile)) filesToUpload.Add(logFile);
         if (csvFile is not null && File.Exists(csvFile)) filesToUpload.Add(csvFile);
         if (scapSccFile is not null && File.Exists(scapSccFile)) filesToUpload.Add(scapSccFile);
-        foreach (TrivySbomGenerator.TrivySbomResult sbom in generatedSboms)
+        foreach (TrivySbomGenerator.Result sbom in generatedSboms)
         {
             if (File.Exists(sbom.OutputPath)) filesToUpload.Add(sbom.OutputPath);
             if (sbom.DiagnosticLogPath is not null && File.Exists(sbom.DiagnosticLogPath)) filesToUpload.Add(sbom.DiagnosticLogPath);

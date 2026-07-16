@@ -370,3 +370,5 @@ SCA_test/
 
 Policies/CIS/*
 !Policies/CIS/README.md
+Policies/cis_win2022.yml
+Policies/cis_win2025.yml

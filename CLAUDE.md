@@ -45,7 +45,7 @@ Windows: `C:\ProgramData\platform-scanning`
 macOS: `/Library/Application Support/platform-scanning`
 Linux: `/var/lib/platform-scanning`
 
-If no explicit file names are supplied, the app creates host-specific defaults such as `hardening-<host>-<timestamp>.log`, `hardening-<host>-<timestamp>.csv`, `hardening-<host>-<timestamp>.txt`, and `sbom-trivy-<host>-<timestamp>.json`.
+If no explicit file names are supplied, the app creates host-specific defaults: `hardening-<host>.log`, `hardening-<host>.csv`, `hardening-<host>.txt`, and `sbom-<host>.cdx.json`. There is no timestamp — re-running a scan on the same host overwrites that host's previous files. When an SBOM run covers multiple drives, each target's file gets a dot-separated drive suffix before the CycloneDX extension (e.g. `sbom-<host>.C.cdx.json`, `sbom-<host>.D.cdx.json`), and any Trivy diagnostics are written alongside as `sbom-<host>.C.trivy.log`. The bundle wrapper (`Invoke-ScannerBundle.ps1`) uses this same `hardening-<host>.*` / `sbom-<host>.cdx.json` convention, keyed only on `$env:COMPUTERNAME`.
 
 ## Policy format summary
 The scanner follows the Wazuh SCA style:

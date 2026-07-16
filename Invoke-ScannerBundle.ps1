@@ -5,7 +5,6 @@ param(
     [string]$ScannerExecutable = 'SCAScanner.exe',
     [string]$PolicyPath = 'Policies',
     [string]$OutputRoot,
-    [string]$RunName = 'scan',
     [switch]$DisplayDetails,
     [string]$SbomTarget,
     [switch]$KeepStagingRoot,
@@ -35,29 +34,6 @@ function Resolve-OutputRoot {
     }
 
     return Join-Path $BundlePath 'results'
-}
-
-function Get-SafeName {
-    param(
-        [string]$Value,
-        [string]$Fallback = 'scan'
-    )
-
-    if ([string]::IsNullOrWhiteSpace($Value)) {
-        return $Fallback
-    }
-
-    $invalidChars = [System.IO.Path]::GetInvalidFileNameChars()
-    $safe = -join ($Value.ToCharArray() | ForEach-Object {
-        if ($invalidChars -contains $_) { '_' } else { $_ }
-    })
-
-    $safe = $safe.Trim('_', '.', ' ')
-    if ([string]::IsNullOrWhiteSpace($safe)) {
-        return $Fallback
-    }
-
-    return $safe
 }
 
 function Get-WorkingRoot {
@@ -129,16 +105,16 @@ function Invoke-Scanner {
         [string]$ScannerPath,
         [string]$PolicyTarget,
         [string]$OutputRoot,
-        [string]$ArtifactBase,
+        [string]$HostName,
         [switch]$UseDetailedOutput,
         [string]$SbomTarget,
         [string[]]$AdditionalArguments
     )
 
-    $logFile = Join-Path $OutputRoot "$ArtifactBase.log"
-    $csvFile = Join-Path $OutputRoot "$ArtifactBase.csv"
-    $reportFile = Join-Path $OutputRoot "$ArtifactBase.txt"
-    $sbomFile = Join-Path $OutputRoot "$ArtifactBase.sbom.cdx.json"
+    $logFile = Join-Path $OutputRoot "hardening-$HostName.log"
+    $csvFile = Join-Path $OutputRoot "hardening-$HostName.csv"
+    $reportFile = Join-Path $OutputRoot "hardening-$HostName.txt"
+    $sbomFile = Join-Path $OutputRoot "sbom-$HostName.cdx.json"
 
     $arguments = @()
     if ($UseDetailedOutput) {
@@ -192,20 +168,16 @@ try {
     $scannerPath = Resolve-ScannerPath -BundlePath $workingRootInfo.Path -ExecutableName $ScannerExecutable
     $policyTarget = Resolve-PolicyTarget -BundlePath $workingRootInfo.Path -RelativeTarget $PolicyPath
 
-    $runStamp = Get-Date -Format 'yyyyMMdd'
     $computerName = $env:COMPUTERNAME
-    $policyName = Get-SafeName ([System.IO.Path]::GetFileNameWithoutExtension($policyTarget))
-    $safeRunName = Get-SafeName $RunName
-    $artifactBase = "${safeRunName}-${policyName}-${computerName}-${runStamp}"
 
-    Invoke-Scanner -ScannerPath $scannerPath -PolicyTarget $policyTarget -OutputRoot $OutputRoot -ArtifactBase $artifactBase -UseDetailedOutput:$DisplayDetails -SbomTarget $SbomTarget -AdditionalArguments $ExtraScannerArgs
+    Invoke-Scanner -ScannerPath $scannerPath -PolicyTarget $policyTarget -OutputRoot $OutputRoot -HostName $computerName -UseDetailedOutput:$DisplayDetails -SbomTarget $SbomTarget -AdditionalArguments $ExtraScannerArgs
 
     Write-Host ""
     Write-Host "Artifacts created:"
-    Write-Host "  Log        : $(Join-Path $OutputRoot "$artifactBase.log")"
-    Write-Host "  CSV        : $(Join-Path $OutputRoot "$artifactBase.csv")"
-    Write-Host "  Report     : $(Join-Path $OutputRoot "$artifactBase.txt")"
-    Write-Host "  SBOM       : $(Join-Path $OutputRoot "$artifactBase.sbom.cdx.json")"
+    Write-Host "  Log        : $(Join-Path $OutputRoot "hardening-$computerName.log")"
+    Write-Host "  CSV        : $(Join-Path $OutputRoot "hardening-$computerName.csv")"
+    Write-Host "  Report     : $(Join-Path $OutputRoot "hardening-$computerName.txt")"
+    Write-Host "  SBOM       : $(Join-Path $OutputRoot "sbom-$computerName.cdx.json")"
 }
 finally {
     if (-not $KeepStagingRoot -and $workingRootInfo.Temporary -and (Test-Path -LiteralPath $workingRootInfo.Path)) {

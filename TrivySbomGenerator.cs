@@ -6,7 +6,7 @@ using System.Threading;
 
 public sealed class TrivySbomGenerator
 {
-    public sealed record TrivySbomResult(
+    public sealed record Result(
         string OutputPath,
         string TargetPath,
         string? DiagnosticLogPath,
@@ -39,10 +39,10 @@ public sealed class TrivySbomGenerator
             outputRoot = "/var/lib/platform-scanning";
         }
 
-        return Path.Combine(outputRoot, $"sbom-trivy-{hostName}.json");
+        return Path.Combine(outputRoot, $"sbom-{hostName}.cdx.json");
     }
 
-    public sealed class TrivySbomOptions
+    public sealed class Options
     {
         public string? TargetPath { get; init; }
         public TimeSpan Timeout { get; init; } = TimeSpan.FromMinutes(5);
@@ -51,7 +51,7 @@ public sealed class TrivySbomGenerator
         public IReadOnlyList<string> SkipFiles { get; init; } = Array.Empty<string>();
     }
 
-    public TrivySbomResult GenerateSbom(string? outputPath, TrivySbomOptions options)
+    public Result GenerateSbom(string? outputPath, Options options)
     {
         string trivyPath = ResolveTrivyPath();
         string finalOutput = string.IsNullOrWhiteSpace(outputPath) ? ResolveDefaultOutputPath() : outputPath;
@@ -69,6 +69,7 @@ public sealed class TrivySbomGenerator
         var startInfo = new ProcessStartInfo
         {
             FileName = trivyPath,
+            WorkingDirectory = Directory.Exists(targetPath) ? targetPath : Path.GetDirectoryName(targetPath) ?? targetPath,
             RedirectStandardError = true,
             RedirectStandardOutput = true,
             UseShellExecute = false,
@@ -161,7 +162,7 @@ public sealed class TrivySbomGenerator
 
         string? diagnosticLogPath = WriteDiagnosticsLog(fullOutput, targetPath, stdOut.ToString(), stdErr.ToString());
 
-        return new TrivySbomResult(
+        return new Result(
             fullOutput,
             targetPath,
             diagnosticLogPath,
@@ -185,7 +186,7 @@ public sealed class TrivySbomGenerator
                 return drives;
         }
 
-        return new[] { GetDefaultTargetPath() };
+        return new[] { ResolveDefaultTargetPath() };
     }
 
     public static string ResolveOutputPathForTarget(string outputPath, string targetPath, int targetCount)
@@ -200,13 +201,13 @@ public sealed class TrivySbomGenerator
 
         const string cycloneDxJsonSuffix = ".cdx.json";
         string outputFileName = fileName.EndsWith(cycloneDxJsonSuffix, StringComparison.OrdinalIgnoreCase)
-            ? fileName[..^cycloneDxJsonSuffix.Length] + $"-{suffix}" + cycloneDxJsonSuffix
-            : Path.GetFileNameWithoutExtension(fileName) + $"-{suffix}" + Path.GetExtension(fileName);
+            ? fileName[..^cycloneDxJsonSuffix.Length] + $".{suffix}" + cycloneDxJsonSuffix
+            : Path.GetFileNameWithoutExtension(fileName) + $".{suffix}" + Path.GetExtension(fileName);
 
         return Path.Combine(directory, outputFileName);
     }
 
-    public static string GetDefaultTargetPath()
+    public static string ResolveDefaultTargetPath()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -229,7 +230,7 @@ public sealed class TrivySbomGenerator
             return fullPath;
         }
 
-        return GetDefaultTargetPath();
+        return ResolveDefaultTargetPath();
     }
 
     private static string GetTargetSuffix(string targetPath)
@@ -259,7 +260,11 @@ public sealed class TrivySbomGenerator
         if (string.IsNullOrWhiteSpace(stdOut) && string.IsNullOrWhiteSpace(stdErr))
             return null;
 
-        string logPath = outputPath + ".trivy.log";
+        const string cycloneDxJsonSuffix = ".cdx.json";
+        string outputBase = outputPath.EndsWith(cycloneDxJsonSuffix, StringComparison.OrdinalIgnoreCase)
+            ? outputPath[..^cycloneDxJsonSuffix.Length]
+            : Path.Combine(Path.GetDirectoryName(outputPath) ?? string.Empty, Path.GetFileNameWithoutExtension(outputPath));
+        string logPath = outputBase + ".trivy.log";
         var log = new StringBuilder();
         log.AppendLine($"Target: {targetPath}");
         log.AppendLine($"SBOM: {outputPath}");

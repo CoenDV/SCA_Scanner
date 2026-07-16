@@ -86,7 +86,7 @@ Use the Windows release bundle together with `Invoke-ScannerBundle.ps1` for a si
   ```powershell
   .\Invoke-ScannerBundle.ps1 -PolicyPath Policies\cis_win2022.yml
   ```
-3. To scan a different policy, change `-PolicyPath` to a file or directory inside the bundle. Results are written directly into the bundle-local `results` folder with timestamped names that include the policy and host name. Use `-RunName` only if you want to change the filename prefix.
+3. To scan a different policy, change `-PolicyPath` to a file or directory inside the bundle. Results are written directly into the bundle-local `results` folder as `hardening-<host>.log/.csv/.txt` and `sbom-<host>.cdx.json`; re-running on the same host overwrites the previous run's files.
 4. If you want to keep the extracted bundle root when you passed `-BundleZip`, add `-KeepStagingRoot`.
 5. If you want to scan every fixed local drive as part of the SBOM step, pass `-AllDrives`.
 6. The archive remains for collection, and the extracted bundle copy is removed automatically unless `-KeepStagingRoot` is used.
