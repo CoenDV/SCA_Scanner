@@ -68,11 +68,18 @@ static string GetSafeHostName()
     return string.IsNullOrWhiteSpace(safe) ? "unknown-host" : safe;
 }
 
+static string GetDateStamp() => DateTimeOffset.Now.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+
 static string GetDefaultOutputRoot()
 {
     string? reportsDir = Environment.GetEnvironmentVariable("REPORTS_DIR");
     if (!string.IsNullOrWhiteSpace(reportsDir))
         return reportsDir;
+
+    string baseDirectory = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    string bundlePolicies = Path.Combine(baseDirectory, "Policies");
+    if (Directory.Exists(bundlePolicies))
+        return Path.Combine(baseDirectory, "results");
 
     if (OperatingSystem.IsWindows())
     {
@@ -253,7 +260,7 @@ static int ScanCommand(string policyPath, IReporter reporter, IDeserializer dese
         reporter.PrintRequirementsSection(reqCheck, policy.Variables, reqResult);
 
         if (reqResult.Status != CheckStatus.Passed)
-            return 1;
+            return 0;
     }
 
     // ── Run checks ────────────────────────────────────────────────────────────────
@@ -297,7 +304,7 @@ static int ScanCommand(string policyPath, IReporter reporter, IDeserializer dese
 
     reporter.PrintScanSummary(totalPassed, totalFailed, totalInvalid, checkResults);
 
-    return totalFailed > 0 ? 1 : 0;
+    return 0;
 }
 
 // ── Main Entry Point ─────────────────────────────────────────────────────────
@@ -310,11 +317,30 @@ string? sbomFile = null;
 string? sbomTarget = null;
 bool sbomAllDrives = false;
 string outputRoot = GetDefaultOutputRoot();
-string sbomTimeoutText = "5m";
-TimeSpan sbomTimeout = TimeSpan.FromMinutes(5);
+string sbomTimeoutText = "30m";
+TimeSpan sbomTimeout = TimeSpan.FromMinutes(30);
 List<string> sbomSkipDirs = new();
 List<string> sbomSkipFiles = new();
 string? target = null;
+
+// Large, low-value Windows paths that make full-drive Trivy scans take far longer
+// without contributing meaningful SBOM data. Only applied when the user hasn't
+// supplied their own --sbom-skip-dir/--sbom-skip-file (CLI or config).
+string[] defaultWindowsSkipDirs =
+{
+    "Windows/WinSxS",
+    "Windows/SoftwareDistribution",
+    "Windows/Temp",
+    "System Volume Information",
+    "$Recycle.Bin",
+    "ProgramData/Microsoft/Windows Defender",
+};
+string[] defaultWindowsSkipFiles =
+{
+    "pagefile.sys",
+    "hiberfil.sys",
+    "swapfile.sys",
+};
 
 // SFTP configuration
 string? sftpHost = null;
@@ -605,11 +631,20 @@ if (target is null)
     return 0;
 }
 
+if (OperatingSystem.IsWindows())
+{
+    if (sbomSkipDirs.Count == 0)
+        sbomSkipDirs.AddRange(defaultWindowsSkipDirs);
+    if (sbomSkipFiles.Count == 0)
+        sbomSkipFiles.AddRange(defaultWindowsSkipFiles);
+}
+
 string hostName = GetSafeHostName();
-logFile ??= BuildArtifactPath(outputRoot, $"hardening-{hostName}.log");
-csvFile ??= BuildArtifactPath(outputRoot, $"hardening-{hostName}.csv");
-scapSccFile ??= BuildArtifactPath(outputRoot, $"hardening-{hostName}.txt");
-sbomFile ??= BuildArtifactPath(outputRoot, $"sbom-trivy-{hostName}.json");
+string dateStamp = GetDateStamp();
+logFile ??= BuildArtifactPath(outputRoot, $"hardening-{hostName}-{dateStamp}.log");
+csvFile ??= BuildArtifactPath(outputRoot, $"hardening-{hostName}-{dateStamp}.csv");
+scapSccFile ??= BuildArtifactPath(outputRoot, $"hardening-{hostName}-{dateStamp}.txt");
+sbomFile ??= BuildArtifactPath(outputRoot, $"sbom-trivy-{hostName}-{dateStamp}.json");
 
 EnsureOutputDirectory(outputRoot);
 EnsureParentDirectory(logFile);
@@ -632,6 +667,12 @@ IDeserializer deserializer = new DeserializerBuilder()
     .IgnoreUnmatchedProperties()
     .Build();
 
+if (!string.IsNullOrWhiteSpace(sbomTarget) && sbomAllDrives)
+{
+    Console.Error.WriteLine("Error: --sbom-target and --sbom-all-drives cannot be used together.");
+    return 1;
+}
+
 int exitCode = 0;
 List<TrivySbomGenerator.TrivySbomResult> generatedSboms = new();
 
@@ -646,9 +687,6 @@ try
     string plannedSbomPath = string.IsNullOrWhiteSpace(sbomFile)
         ? sbomGenerator.ResolveDefaultOutputPath()
         : sbomFile;
-
-    if (!string.IsNullOrWhiteSpace(sbomTarget) && sbomAllDrives)
-        throw new InvalidOperationException("--sbom-target and --sbom-all-drives cannot be used together.");
 
     IReadOnlyList<string> sbomTargets = TrivySbomGenerator.ResolveTargetPaths(sbomTarget, sbomAllDrives);
     string displayTarget = sbomTargets.Count == 1
@@ -685,7 +723,6 @@ try
 catch (Exception ex)
 {
     consoleReporter.PrintError($"SBOM generation failed: {ex.Message}");
-    exitCode = 1;
 }
 finally
 {
@@ -733,10 +770,10 @@ finally
             catch (Exception ex)
             {
                 consoleReporter.PrintError($"SFTP upload failed: {ex.Message}");
-                exitCode = 1;
             }
         }
     }
+
 }
 
 return exitCode;

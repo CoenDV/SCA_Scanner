@@ -144,12 +144,15 @@ public class ScannerConfig
 # sbom_file: scan-results.json
 # sbom_target: C:\
 # sbom_all_drives: false
-# sbom_timeout: 5m
+# sbom_timeout: 30m
+# On Windows, if these are left unset, the scanner already skips
+# WinSxS, SoftwareDistribution, Windows/Temp, System Volume Information,
+# $Recycle.Bin, Windows Defender, and the pagefile/hiberfil/swapfile.
 # sbom_skip_dirs:
-#   - C:\Windows\WinSxS
-#   - C:\Windows\SoftwareDistribution
+#   - Windows/WinSxS
+#   - Windows/SoftwareDistribution
 # sbom_skip_files:
-#   - C:\pagefile.sys
+#   - pagefile.sys
 
 # SFTP Upload Settings
 # sftp_host: sftp.example.com      # Hostname or IP address
@@ -158,6 +161,7 @@ public class ScannerConfig
 # sftp_pass: password               # Can also use env var SFTP_PASS
 # sftp_key: /path/to/private/key    # For SSH key-based authentication
 # sftp_path: /remote/reports        # Can also use env var SFTP_PATH
+
 ";
 
         try

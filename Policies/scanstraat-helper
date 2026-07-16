@@ -24,7 +24,7 @@ function Get-SourceDirectory {
     throw "Could not determine the application folder."
 }
 
-function Escape-YamlValue {
+function ConvertTo-YamlEscapedValue {
     param([string]$Value)
 
     if ($null -eq $Value) {
@@ -100,22 +100,10 @@ $configPath      = Join-Path $installDir "config.yml"
 
 function Write-ConfigFile {
     $reportFile = Join-Path $outDir ("sca_report_{0}.txt" -f $env:COMPUTERNAME)
-
-    $sftpHost  = Escape-YamlValue $txtSftpHost.Text.Trim()
-    $sftpPort  = $txtSftpPort.Text.Trim()
-    $sftpUser  = Escape-YamlValue $txtSftpUser.Text.Trim()
-    $sftpPass  = Escape-YamlValue $txtSftpPass.Text
-    $sftpPath  = Escape-YamlValue $txtSftpPath.Text.Trim()
-    $reportFileEscaped = Escape-YamlValue $reportFile
+    $reportFileEscaped = ConvertTo-YamlEscapedValue $reportFile
 
     $content = @"
 report_file: '$reportFileEscaped'
-sftp_host: '$sftpHost'
-sftp_port: $sftpPort
-sftp_user: '$sftpUser'
-sftp_pass: '$sftpPass'
-sftp_key: ''
-sftp_path: '$sftpPath'
 "@
 
     Set-Content -Path $configPath -Value $content -Encoding UTF8
@@ -141,7 +129,7 @@ function Install-Files {
     Write-ConfigFile
 }
 
-function Create-OrUpdateTask {
+function Register-WeeklyTask {
     $action = New-ScheduledTaskAction `
         -Execute $targetExe `
         -Argument ('"{0}"' -f $targetBenchmark) `
@@ -205,31 +193,11 @@ $panel1.Controls.Add((New-Label "Click Next to continue." 10 205 760 28))
 
 # Step 2
 $panel2.Controls.Add((New-Label "Configuration" 10 10 760 35 $fontTitle))
-$panel2.Controls.Add((New-Label "Fill in the SFTP settings for config.yml." 10 60 760 28))
+$panel2.Controls.Add((New-Label "This installer writes config.yml with the report output path only." 10 60 760 28))
 
-$panel2.Controls.Add((New-Label "SFTP host" 10 100))
-$txtSftpHost = New-TextBox "" 10 125 640
-
-$panel2.Controls.Add((New-Label "SFTP port" 10 165))
-$txtSftpPort = New-TextBox "22" 10 190 180
-
-$panel2.Controls.Add((New-Label "SFTP user" 10 230))
-$txtSftpUser = New-TextBox "" 10 255 640
-
-$panel2.Controls.Add((New-Label "SFTP password" 10 295))
-$txtSftpPass = New-Object System.Windows.Forms.TextBox
-$txtSftpPass.Location = New-Object System.Drawing.Point(10, 320)
-$txtSftpPass.Size = New-Object System.Drawing.Size(640, 28)
-$txtSftpPass.UseSystemPasswordChar = $true
-
-$panel2.Controls.Add((New-Label "SFTP path" 10 360))
-$txtSftpPath = New-TextBox "" 10 385 640
-
-$panel2.Controls.Add($txtSftpHost)
-$panel2.Controls.Add($txtSftpPort)
-$panel2.Controls.Add($txtSftpUser)
-$panel2.Controls.Add($txtSftpPass)
-$panel2.Controls.Add($txtSftpPath)
+$panel2.Controls.Add((New-Label "Report path" 10 110))
+$txtReportPath = New-TextBox $reportFile 10 135 640
+$panel2.Controls.Add($txtReportPath)
 
 # Step 3
 $panel3.Controls.Add((New-Label "Ready to Install" 10 10 760 35 $fontTitle))
@@ -239,17 +207,9 @@ $panel3.Controls.Add((New-Label "Data folder: $dataDir" 10 165 780 28))
 $panel3.Controls.Add((New-Label "Task name: $taskName" 10 200 780 28))
 $panel3.Controls.Add((New-Label "Benchmark: $benchmarkName" 10 235 780 28))
 
-$panel3.Controls.Add((New-Label "SFTP host:" 10 285 120 25))
-$lblReadySftpHost = New-Label "" 150 285 620 25
-$panel3.Controls.Add($lblReadySftpHost)
-
-$panel3.Controls.Add((New-Label "SFTP user:" 10 315 120 25))
-$lblReadySftpUser = New-Label "" 150 315 620 25
-$panel3.Controls.Add($lblReadySftpUser)
-
-$panel3.Controls.Add((New-Label "SFTP path:" 10 345 120 25))
-$lblReadySftpPath = New-Label "" 150 345 620 25
-$panel3.Controls.Add($lblReadySftpPath)
+$panel3.Controls.Add((New-Label "Report path:" 10 285 120 25))
+$lblReadyReportPath = New-Label "" 150 285 620 25
+$panel3.Controls.Add($lblReadyReportPath)
 
 $btnBack = New-Object System.Windows.Forms.Button
 $btnBack.Text = "Back"
@@ -292,9 +252,7 @@ function Show-Step {
             $panel2.Visible = $true
         }
         3 {
-            $lblReadySftpHost.Text = $txtSftpHost.Text.Trim()
-            $lblReadySftpUser.Text = $txtSftpUser.Text.Trim()
-            $lblReadySftpPath.Text = $txtSftpPath.Text.Trim()
+            $lblReadyReportPath.Text = $txtReportPath.Text.Trim()
             $panel3.Visible = $true
         }
     }
@@ -315,37 +273,6 @@ $btnNext.Add_Click({
     }
 
     if ($script:currentStep -eq 2) {
-        if ([string]::IsNullOrWhiteSpace($txtSftpHost.Text)) {
-            [System.Windows.Forms.MessageBox]::Show("Enter the SFTP host.", "Validation") | Out-Null
-            return
-        }
-
-        if ([string]::IsNullOrWhiteSpace($txtSftpPort.Text)) {
-            [System.Windows.Forms.MessageBox]::Show("Enter the SFTP port.", "Validation") | Out-Null
-            return
-        }
-
-        $portValue = 0
-        if (-not [int]::TryParse($txtSftpPort.Text, [ref]$portValue)) {
-            [System.Windows.Forms.MessageBox]::Show("SFTP port must be a number.", "Validation") | Out-Null
-            return
-        }
-
-        if ([string]::IsNullOrWhiteSpace($txtSftpUser.Text)) {
-            [System.Windows.Forms.MessageBox]::Show("Enter the SFTP user.", "Validation") | Out-Null
-            return
-        }
-
-        if ([string]::IsNullOrWhiteSpace($txtSftpPass.Text)) {
-            [System.Windows.Forms.MessageBox]::Show("Enter the SFTP password.", "Validation") | Out-Null
-            return
-        }
-
-        if ([string]::IsNullOrWhiteSpace($txtSftpPath.Text)) {
-            [System.Windows.Forms.MessageBox]::Show("Enter the SFTP path.", "Validation") | Out-Null
-            return
-        }
-
         Show-Step 3
     }
 })
@@ -353,7 +280,7 @@ $btnNext.Add_Click({
 $btnFinish.Add_Click({
     try {
         Install-Files
-        Create-OrUpdateTask
+        Register-WeeklyTask
 
         [System.Windows.Forms.MessageBox]::Show(
             "Installation completed successfully.`r`n`r`nTask: $taskName`r`nSchedule: Every Sunday at 05:00",

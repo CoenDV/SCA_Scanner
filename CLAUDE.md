@@ -1,91 +1,67 @@
-# SCA Scanner — Project Documentation
+# SCA Scanner
 
-## Overview
-.NET 10 console app evaluating system compliance against Wazuh SCA policies. Supports Windows, macOS, Linux. Parses rule strings, executes checks (file/dir/process/command/registry), applies conditions (ALL/ANY/NONE), outputs to console/log/CSV/SCAP-SCC.
+## What this repo does
+This is a .NET 10 console app that evaluates a machine against Wazuh SCA YAML policies. It can scan a single policy file or a directory of policies, skip policies whose `requirements` block does not match the current host, and write multiple output formats for the same run.
 
-**Key Features:** PowerShell/Bash execution, numeric regex capture groups, smart requirements checking, multi-format reporting.
+The scanner supports Windows, macOS, and Linux. It evaluates file, directory, process, command, and registry rules, applies `all` / `any` / `none` conditions, and emits console output plus optional log, CSV, SCAP-SCC, SBOM, and SFTP-uploaded artifacts.
 
----
+## How it works
+1. `Program.cs` handles startup, argument parsing, config loading, report setup, policy execution, SBOM generation, and optional upload.
+2. Config loading happens before normal CLI parsing. A `config.yml` in the working directory is used if present, and CLI arguments override config values.
+3. `--write-config` exits early after creating a template config file.
+4. If the target path is a directory, the scanner loads all `.yml` and `.yaml` files, checks each policy's `requirements`, and only runs the applicable ones.
+5. For a single policy file, the scanner prints the policy header, evaluates `requirements` if present, then runs each `check` in order.
+6. After the policy scan, the app always tries to generate a Trivy CycloneDX SBOM. The SBOM target defaults to the host root unless `--sbom-target` or `--sbom-all-drives` is used.
+7. If the app is running from a bundle that contains `Policies/`, the default output folder becomes a local `results/` directory next to the bundle contents, and the wrapper writes flat timestamped files directly into that folder.
+8. If SFTP is configured, the scanner uploads the generated artifacts after local output is written.
 
-## Core Files
-
+## Main files
 | File | Purpose |
 |------|---------|
-| **Program.cs** | Entry point, argument parsing, orchestration, directory scanning |
-| **Models.cs** | Enums (CheckStatus, CheckCondition, OutputLevel, RuleType, etc.) and YAML-deserializable data classes |
-| **RuleParser.cs** | Parses rule strings → `ParsedRule`. Handles f:/d:/p:/c:/r: prefixes, `->` content, negation, AND conditions, env var expansion (`%VAR%` → `$env:VAR`) |
-| **RuleChecker.cs** | Executes rules per type (file/dir/process/command/registry), applies condition logic (ALL/ANY/NONE), returns CheckResult |
-| **IReporter.cs** | Interface segregation: `IPolicyReporter`, `ICheckReporter`, `ISummaryReporter`, `IDirectoryReporter`, `IErrorReporter`, `IReporter` (composite) |
-| **BaseReporter.cs** | Abstract base with print logic; subclasses implement `Write()/WriteLine()` with/without color |
-| **ConsoleReporter.cs** | Colored console output, respects `OutputLevel` |
-| **FileReporter.cs** | Plain text file logging, always Detailed level |
-| **AdvancedReporter.cs** | SCAP-SCC format with system metadata (hostname, OS, interfaces, memory, timestamps); truncates error messages |
-| **CsvReporter.cs** | CSV export (one row per check result) with columns: Computer_Name, OS, Standard, Version, Scan_Date, Description, Fix_Text, Rule, Rule_ID, Status |
-| **CompositeReporter.cs** | Routes method calls to multiple reporters; disposes IDisposable implementations |
-| **StringUtils.cs** | `Truncate(text, maxLength)` helper |
+| `Program.cs` | Entry point and orchestration for config, scanning, SBOM generation, and upload |
+| `Models.cs` | YAML-backed policy models, enums, and scan result types |
+| `RuleParser.cs` | Parses Wazuh rule strings into structured rules |
+| `RuleChecker.cs` | Executes rule evaluation and condition logic |
+| `ScannerConfig.cs` | YAML config model, template writer, and config loader helpers |
+| `ConfigLoader.cs` | Loads `config.yml` or an explicit config file and writes templates |
+| `TrivySbomGenerator.cs` | Wraps Trivy execution and SBOM output generation |
+| `SftpConfig.cs` / `SftpUploader.cs` | SFTP configuration and artifact upload |
+| `IReporter.cs` | Reporter contracts used by the output pipeline |
+| `ConsoleReporter.cs`, `FileReporter.cs`, `CsvReporter.cs`, `AdvancedReporter.cs`, `CompositeReporter.cs` | Console, log, CSV, SCAP-SCC, and fan-out reporting |
+| `StringUtils.cs` | Small shared string helpers |
 
----
-
-## Build & Run
+## Build and run
 ```bash
 dotnet build SCAScanner.csproj
 dotnet run --project SCAScanner.csproj [policy.yaml | policy_dir]
 ```
 
-**Options:**
-- `--display-details`: Detailed output level
-- `--no-details`: Compact output level
-- `-l, --log <file>`: Write to log file
-- `--csv <file>`: CSV export
-- `-r, --report <file>`: SCAP-SCC format
-- `-h, --help`: Help
+Common options:
+`--display-details`, `--no-details`, `-l|--log`, `--csv`, `-r|--report`, `--output-dir`, `--sbom-file`, `--sbom-target`, `--sbom-all-drives`, `--sbom-timeout`, `--sbom-skip-dir`, `--sbom-skip-file`, `--sftp`, `--sftp-user`, `--sftp-pass`, `--sftp-key`, `--sftp-path`, `-c|--config`, `--write-config`, `-h|--help`.
 
-**Dependencies:** .NET 10, YamlDotNet 15.3.0 (Implicit Usings, Nullable Reference Types enabled)
+## Output behavior
+Default artifacts are written under `REPORTS_DIR` when set, otherwise to the platform standard directory:
+Windows: `C:\ProgramData\platform-scanning`
+macOS: `/Library/Application Support/platform-scanning`
+Linux: `/var/lib/platform-scanning`
 
----
+If no explicit file names are supplied, the app creates host-specific defaults such as `hardening-<host>-<timestamp>.log`, `hardening-<host>-<timestamp>.csv`, `hardening-<host>-<timestamp>.txt`, and `sbom-trivy-<host>-<timestamp>.json`.
 
-## SCA Rule Format (Wazuh)
+## Policy format summary
+The scanner follows the Wazuh SCA style:
+`f:` file checks, `d:` directory checks, `p:` process checks, `c:` command output checks, and `r:` registry checks on Windows.
 
-| Prefix | Syntax | Example |
-|--------|--------|---------|
-| `f:` | File exists / content match | `f:/etc/passwd -> r:root` |
-| `d:` | Directory / files within | `d:/usr/bin -> r:bash` |
-| `p:` | Process running | `p:sshd` |
-| `c:` | Command output | `c:uname -a -> r:Linux` |
-| `r:` | Windows registry (Windows only) | `r:HKEY_LOCAL_MACHINE\...\Key -> Value -> Data` |
+Rules support literal matches, regex matches, numeric comparisons, negation, and combined `&&` matches. Check conditions are `all`, `any`, or `none`.
 
-**Content Operators:**
-- Literal: `f:/file -> root` (substring match)
-- Regex: `f:/file -> r:pattern\d+`
-- Numeric: `c:cmd -> n:value (\d+) compare <= 100` (regex capture + compare)
+## Implementation notes
+- `CompositeReporter` fans out to the console, log, CSV, and SCAP-SCC reporters.
+- `ScannerConfig` is optional and only supplies defaults; CLI always wins.
+- When the executable is run from a published bundle that includes `Policies/`, the default output root resolves to a sibling `results/` folder instead of the system report directory, and the generic wrapper keeps the output flat instead of nesting a per-run folder.
+- Trivy is resolved from `bin/trivy` or `bin/trivy.exe` near the app.
+- SBOM generation writes a neighboring `.trivy.log` file when Trivy emits diagnostics.
+- The default `--sbom-timeout` is 30m (applies per SBOM target, so `--sbom-all-drives` can take a multiple of that). On Windows, unless `--sbom-skip-dir`/`--sbom-skip-file` (or the config equivalents) are set, the scanner defaults to skipping `Windows/WinSxS`, `Windows/SoftwareDistribution`, `Windows/Temp`, `System Volume Information`, `$Recycle.Bin`, `ProgramData/Microsoft/Windows Defender`, and `pagefile.sys`/`hiberfil.sys`/`swapfile.sys` to keep full-drive scans reasonable.
+- Directory scans only execute policies whose `requirements` block passes on the current host.
+- The process exits nonzero only when it fails to run at all: bad CLI arguments/config, a policy file that's missing or unparsable, a policy directory with no `.yml`/`.yaml` files, or a directory scan where no policy's `requirements` match the host. Failed checks, unmet requirements on a directly-targeted policy, SBOM/Trivy generation problems, and SFTP upload failures are reported (console/log/results) but do not affect the exit code.
 
-**Negation:** `!f:/path` or `not r:PATTERN` (passes if NOT found)
-
-**AND Conditions:** `r:pattern1 && r:pattern2` (single line must match both)
-
-**Rule Conditions:**
-- `all`: Every rule must pass
-- `any`: At least one rule must pass
-- `none`: Every rule must fail
-
----
-
-## Architecture Patterns
-
-- **Interface Segregation:** Reporters implement only required sub-interfaces
-- **Composite Pattern:** `CompositeReporter` routes to multiple reporters
-- **Strategy Pattern:** Different execution per rule type
-- **Template Method:** `BaseReporter` defines structure; subclasses implement I/O
-
----
-
-## File Structure
-```
-SCA_Scanner/
-├── SCAScanner.csproj
-├── Program.cs, Models.cs, RuleParser.cs, RuleChecker.cs
-├── IReporter.cs, BaseReporter.cs
-├── ConsoleReporter.cs, FileReporter.cs, AdvancedReporter.cs, CsvReporter.cs, CompositeReporter.cs
-├── StringUtils.cs
-└── Policies/ (example YAML files)
-```
+## When changing code
+If you need to change scan behavior, start in `Program.cs`, `RuleChecker.cs`, and `RuleParser.cs` before touching the reporters. If you need to change output shape, work in the reporter classes first. If you need to change config precedence or defaults, update `ScannerConfig.cs` and `ConfigLoader.cs` together.

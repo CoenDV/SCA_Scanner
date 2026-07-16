@@ -14,6 +14,8 @@ $targets = @(
     @{ Rid = "win-x64"; Output = "publish/win-x64"; Source = "SCAScanner.exe"; Artifact = "SCAScanner-win-x64.exe" }
 )
 
+$windowsRunnerScript = "Invoke-ScannerBundle.ps1"
+
 Write-Host "Building SCAScanner - self-contained single-file executables"
 Write-Host ""
 
@@ -51,6 +53,13 @@ foreach ($target in $targets) {
         }
         else {
             Write-Warning "Trivy not found at $trivyPath"
+        }
+
+        if (Test-Path $windowsRunnerScript) {
+            Copy-Item -LiteralPath $windowsRunnerScript -Destination (Join-Path $bundleDir $windowsRunnerScript) -Force
+        }
+        else {
+            Write-Warning "Bundle runner script not found at $windowsRunnerScript"
         }
     }
 

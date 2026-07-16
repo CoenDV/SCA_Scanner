@@ -29,13 +29,6 @@ OPTIONS:
   --sbom-skip-dir <list>      Comma-separated directories to skip in SBOM scan
   --sbom-skip-file <list>     Comma-separated files to skip in SBOM scan
 
-SFTP UPLOAD OPTIONS:
-  --sftp <host[:port]>        Upload generated files to SFTP server
-  --sftp-user <user>          SFTP username (env: SFTP_USER)
-  --sftp-pass <pass>          SFTP password (env: SFTP_PASS) - ignored if using key auth
-  --sftp-key <path>           SSH private key file path for key-based authentication
-  --sftp-path <path>          Remote directory path (env: SFTP_PATH, default: /)
-
 CONFIG FILE OPTIONS:
   -c, --config <path>         Load configuration from YAML file
   --write-config [path]       Generate a template config file (default: config.yml)
@@ -84,6 +77,19 @@ EXAMPLES:
 5. Review hardening results and SBOM diagnostics together. If Trivy reports warnings on a successful SBOM run, the scanner writes a neighboring `*.trivy.log` file so inaccessible paths or scanner limitations are visible.
 
 6. Treat the SBOM as a detected software inventory, not a full filesystem manifest. Use the hardening reports for configuration evidence and the SBOM for package/component evidence.
+
+## Windows VM workflow
+Use the Windows release bundle together with `Invoke-ScannerBundle.ps1` for a simple deploy-and-cleanup flow.
+
+1. Download or copy `publish/release/SCAScanner-win-x64.exe.zip` to the VM and extract it to a working folder.
+2. Run the bundled wrapper from that folder:
+  ```powershell
+  .\Invoke-ScannerBundle.ps1 -PolicyPath Policies\cis_win2022.yml
+  ```
+3. To scan a different policy, change `-PolicyPath` to a file or directory inside the bundle. Results are written directly into the bundle-local `results` folder with timestamped names that include the policy and host name. Use `-RunName` only if you want to change the filename prefix.
+4. If you want to keep the extracted bundle root when you passed `-BundleZip`, add `-KeepStagingRoot`.
+5. If you want to scan every fixed local drive as part of the SBOM step, pass `-AllDrives`.
+6. The archive remains for collection, and the extracted bundle copy is removed automatically unless `-KeepStagingRoot` is used.
 
 
 
